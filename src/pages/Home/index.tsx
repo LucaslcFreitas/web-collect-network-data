@@ -5,14 +5,68 @@ import { useState, useEffect, useRef } from 'react'
 import type { ParticipantType } from '../../types/ParticipantType'
 import type { BatchType } from '../../types/BatchType'
 import type { MeasurementType } from '../../types/MeasurementType'
+import type { EnvironmentType } from '../../types/EnvironmentType'
 import api from '../../services/api'
 import endpoints from '../../services/endpoints'
 import ParticipantCard from '../../components/ParticipantCard'
 import BatchCard from '../../components/BatchCard'
 
-const getMeasurementLocations = (
-    measurements: MeasurementType[],
-): [number, number][] =>
+const defaultMorphology = [
+    'Urbano denso (prédios altos)',
+    'Urbano (prédios baixos)',
+    'Suburbano residencial (casas, prédios baixos)',
+    'Condomínio',
+    'Vegetação densa',
+    'Vegetação esparsa',
+    "Espelho d'água",
+    'Rural',
+    'Campo aberto',
+    'Indoor',
+    'Shopping',
+    'Estacionamento fechado',
+    'Estádio ou campo esportivo',
+    'Rodovia',
+    'Estrada',
+]
+
+const environmentColors = [
+    '#0000ff',
+    '#dc143c',
+    '#7fff00',
+    '#ff7f50',
+    '#9400d3',
+    '#008000',
+    '#800000',
+    '#ff00ff',
+    '#87ceeb',
+    '#ffff00',
+    '#dda0dd',
+    '#191970',
+    '#778899',
+    '#808000',
+    '#008080',
+    '#4682b4',
+    '#4b0082',
+    '#000000',
+    '#9370db',
+    '#48d1cc',
+    '#4169e1',
+    '#ff6347',
+]
+
+const defaultEnvironmentColor = '#000000'
+
+const getEnvironmentColor = (environment: string | null) => {
+    const environmentIndex = environment
+        ? defaultMorphology.indexOf(environment)
+        : -1
+
+    return environmentColors[environmentIndex] ?? defaultEnvironmentColor
+}
+
+const getMeasurementPoints = (
+    measurements: MeasurementType[]
+): { coordinates: [number, number]; morphology: string | null }[] =>
     measurements.flatMap((measurement) => {
         const location = measurement.location
         if (
@@ -23,11 +77,18 @@ const getMeasurementLocations = (
             return []
         }
 
-        return [[location.longitude, location.latitude]]
+        return [{
+            coordinates: [location.longitude, location.latitude],
+            morphology: measurement.morphology,
+        }]
     })
 
 function Home() {
     const mapRef = useRef<MapRef>(null)
+
+    // environments
+    const [morphology, setMorphology] = useState<string[]>([])
+    const [loadingMorphology, setLoadingMorphology] = useState(true)
 
     // participants
     const [participants, setParticipants] = useState<ParticipantType[]>([])
@@ -47,7 +108,8 @@ function Home() {
     const [measurements, setMeasurements] = useState<MeasurementType[]>([])
     const [loadingMeasurements, setLoadingMeasurements] = useState(false)
 
-    const locations = getMeasurementLocations(measurements)
+    const measurementPoints = getMeasurementPoints(measurements)
+    const locations = measurementPoints.map(({ coordinates }) => coordinates)
 
     const trajeto = {
         type: 'Feature' as const,
@@ -60,12 +122,15 @@ function Home() {
 
     const pontosDoTrajeto = {
         type: 'FeatureCollection' as const,
-        features: locations.map(([longitude, latitude], index) => ({
+        features: measurementPoints.map(({ coordinates, morphology }, index) => ({
             type: 'Feature' as const,
-            properties: { measurementIndex: index + 1 },
+            properties: {
+                measurementIndex: index + 1,
+                color: getEnvironmentColor(morphology),
+            },
             geometry: {
                 type: 'Point' as const,
-                coordinates: [longitude, latitude],
+                coordinates,
             },
         })),
     }
@@ -108,11 +173,14 @@ function Home() {
         if (!batchId) return
         setMeasurements([])
         setLoadingMeasurements(true)
-        api.get<{ measurements: MeasurementType[] }>(endpoints.GET_MEASUREMENTS_BY_ID, {
-            params: {
-                batchId: batchId,
-            },
-        })
+        api.get<{ measurements: MeasurementType[] }>(
+            endpoints.GET_MEASUREMENTS_BY_ID,
+            {
+                params: {
+                    batchId: batchId,
+                },
+            }
+        )
             .then(({ data }) => {
                 setMeasurements(data.measurements)
                 setLoadingMeasurements(false)
@@ -124,13 +192,29 @@ function Home() {
             })
     }
 
+    const loadMorphology = () => {
+        api.get<EnvironmentType>(endpoints.GET_ENVIRONMENT)
+            .then(({ data }) => {
+                setMorphology(data.morphology)
+                setLoadingMorphology(false)
+            })
+            .catch((error) => {
+                console.error('Error fetching environments:', error)
+                setLoadingMorphology(false)
+                setMorphology(defaultMorphology)
+            })
+    }
+
     useEffect(() => {
         loadParticipants()
+        loadMorphology()
     }, [])
 
     useEffect(() => {
         const map = mapRef.current
-        const locations = getMeasurementLocations(measurements)
+        const locations = getMeasurementPoints(measurements).map(
+            ({ coordinates }) => coordinates
+        )
         if (!map || locations.length === 0) return
 
         if (locations.length === 1) {
@@ -149,7 +233,7 @@ function Home() {
                 [Math.min(...longitudes), Math.min(...latitudes)],
                 [Math.max(...longitudes), Math.max(...latitudes)],
             ],
-            { padding: 80, duration: 800 },
+            { padding: 80, duration: 800 }
         )
     }, [measurements])
 
@@ -185,9 +269,9 @@ function Home() {
             <Map
                 ref={mapRef}
                 initialViewState={{
-                    longitude: 0,
-                    latitude: 0,
-                    zoom: 2,
+                    longitude: -43.369237,
+                    latitude: -21.776114,
+                    zoom: 15,
                 }}
                 mapStyle="https://tiles.openfreemap.org/styles/liberty"
                 style={{
@@ -202,7 +286,7 @@ function Home() {
                         id="trajeto-linha"
                         type="line"
                         paint={{
-                            'line-color': '#2563eb',
+                            'line-color': '#696969',
                             'line-width': 4,
                         }}
                     />
@@ -217,13 +301,36 @@ function Home() {
                         type="circle"
                         paint={{
                             'circle-radius': 6,
-                            'circle-color': '#1d4ed8',
+                            'circle-color': ['get', 'color'],
                             'circle-stroke-color': '#ffffff',
                             'circle-stroke-width': 2,
                         }}
                     />
                 </Source>
             </Map>
+            <div className={styles.environment_list}>
+                <h3>Ambientes</h3>
+                {loadingMorphology ? (
+                    <div className={styles.loading_no_batches}>
+                        <p>Carregando ambientes...</p>
+                    </div>
+                ) : (
+                    <div className={styles.morphology_container}>
+                        {morphology.map((m) => (
+                            <p key={m}>
+                                <span
+                                    className={styles.environment_color}
+                                    style={{
+                                        backgroundColor: getEnvironmentColor(m),
+                                    }}
+                                    aria-hidden="true"
+                                />
+                                {m}
+                            </p>
+                        ))}
+                    </div>
+                )}
+            </div>
             <div
                 className={[
                     styles.batch_list,
