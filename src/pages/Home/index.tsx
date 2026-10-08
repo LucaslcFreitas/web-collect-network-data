@@ -1,30 +1,34 @@
 import styles from './Home.module.css'
 import logo from '../../assets/logo.png'
-import Map, { Source, Layer } from 'react-map-gl/maplibre'
-import { useState, useEffect } from 'react'
+import Map, { Source, Layer, type MapRef } from 'react-map-gl/maplibre'
+import { useState, useEffect, useRef } from 'react'
 import type { ParticipantType } from '../../types/ParticipantType'
 import type { BatchType } from '../../types/BatchType'
+import type { MeasurementType } from '../../types/MeasurementType'
 import api from '../../services/api'
 import endpoints from '../../services/endpoints'
 import ParticipantCard from '../../components/ParticipantCard'
 import BatchCard from '../../components/BatchCard'
 
-const pontos = [
-    { lat: -21.760445, lng: -43.349809 },
-    { lat: -21.761319, lng: -43.349576 },
-    { lat: -21.760708, lng: -43.346917 },
-]
+const getMeasurementLocations = (
+    measurements: MeasurementType[],
+): [number, number][] =>
+    measurements.flatMap((measurement) => {
+        const location = measurement.location
+        if (
+            !location ||
+            typeof location.longitude !== 'number' ||
+            typeof location.latitude !== 'number'
+        ) {
+            return []
+        }
 
-const trajeto = {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-        type: 'LineString',
-        coordinates: pontos.map((p) => [p.lng, p.lat]), // GeoJSON usa [lng, lat]
-    },
-}
+        return [[location.longitude, location.latitude]]
+    })
 
 function Home() {
+    const mapRef = useRef<MapRef>(null)
+
     // participants
     const [participants, setParticipants] = useState<ParticipantType[]>([])
     const [loadingParticipants, setLoadingParticipants] = useState(true)
@@ -39,6 +43,32 @@ function Home() {
     const [batchSelected, setBatchSelected] = useState<string | null>(null)
     const [batchError, setBatchError] = useState(false)
 
+    // measurements
+    const [measurements, setMeasurements] = useState<MeasurementType[]>([])
+    const [loadingMeasurements, setLoadingMeasurements] = useState(false)
+
+    const locations = getMeasurementLocations(measurements)
+
+    const trajeto = {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: {
+            type: 'LineString' as const,
+            coordinates: locations,
+        },
+    }
+
+    const pontosDoTrajeto = {
+        type: 'FeatureCollection' as const,
+        features: locations.map(([longitude, latitude], index) => ({
+            type: 'Feature' as const,
+            properties: { measurementIndex: index + 1 },
+            geometry: {
+                type: 'Point' as const,
+                coordinates: [longitude, latitude],
+            },
+        })),
+    }
 
     const loadParticipants = () => {
         api.get<{ participants: ParticipantType[] }>(endpoints.GET_PARTICIPANTS)
@@ -56,28 +86,72 @@ function Home() {
     const loadBatches = (participantId: string) => {
         if (!participantId) return
         console.log('Participant clicked:', participantId)
-            setBatchError(false)
-            setLoadingBatches(true)
-            api.get<{ batches: BatchType[] }>(endpoints.GET_BATCHES_BY_ID, {
-                params: {
-                    participantId: participantId,
-                },
+        setBatchError(false)
+        setLoadingBatches(true)
+        api.get<{ batches: BatchType[] }>(endpoints.GET_BATCHES_BY_ID, {
+            params: {
+                participantId: participantId,
+            },
+        })
+            .then(({ data }) => {
+                setBatches(data.batches)
+                setLoadingBatches(false)
             })
-                .then(({ data }) => {
-                    setBatches(data.batches)
-                    setLoadingBatches(false)
-                })
-                .catch((error) => {
-                    console.error('Error fetching batches:', error)
-                    setLoadingBatches(false)
-                    setBatchError(true)
-                })
+            .catch((error) => {
+                console.error('Error fetching batches:', error)
+                setLoadingBatches(false)
+                setBatchError(true)
+            })
     }
 
+    const loadMeasurements = (batchId: string) => {
+        if (!batchId) return
+        setMeasurements([])
+        setLoadingMeasurements(true)
+        api.get<{ measurements: MeasurementType[] }>(endpoints.GET_MEASUREMENTS_BY_ID, {
+            params: {
+                batchId: batchId,
+            },
+        })
+            .then(({ data }) => {
+                setMeasurements(data.measurements)
+                setLoadingMeasurements(false)
+                console.log('Measurements loaded:', data.measurements)
+            })
+            .catch((error) => {
+                console.error('Error fetching measurements:', error)
+                setLoadingMeasurements(false)
+            })
+    }
 
     useEffect(() => {
         loadParticipants()
     }, [])
+
+    useEffect(() => {
+        const map = mapRef.current
+        const locations = getMeasurementLocations(measurements)
+        if (!map || locations.length === 0) return
+
+        if (locations.length === 1) {
+            map.flyTo({
+                center: locations[0],
+                zoom: 16,
+            })
+            return
+        }
+
+        const longitudes = locations.map(([longitude]) => longitude)
+        const latitudes = locations.map(([, latitude]) => latitude)
+
+        map.fitBounds(
+            [
+                [Math.min(...longitudes), Math.min(...latitudes)],
+                [Math.max(...longitudes), Math.max(...latitudes)],
+            ],
+            { padding: 80, duration: 800 },
+        )
+    }, [measurements])
 
     const retryParticipants = () => {
         setParticipantError(false)
@@ -96,17 +170,24 @@ function Home() {
     }
 
     const handleBatchClick = (batchId: string) => {
-        console.log('Batch clicked:', batchId)
-        setBatchSelected(batchId)
+        if (
+            !loadingMeasurements &&
+            batchId !== batchSelected &&
+            batchId != null
+        ) {
+            setBatchSelected(batchId)
+            loadMeasurements(batchId)
+        }
     }
 
     return (
         <>
             <Map
+                ref={mapRef}
                 initialViewState={{
-                    longitude: pontos[0].lng,
-                    latitude: pontos[0].lat,
-                    zoom: 16,
+                    longitude: 0,
+                    latitude: 0,
+                    zoom: 2,
                 }}
                 mapStyle="https://tiles.openfreemap.org/styles/liberty"
                 style={{
@@ -123,6 +204,22 @@ function Home() {
                         paint={{
                             'line-color': '#2563eb',
                             'line-width': 4,
+                        }}
+                    />
+                </Source>
+                <Source
+                    id="pontos-do-trajeto"
+                    type="geojson"
+                    data={pontosDoTrajeto}
+                >
+                    <Layer
+                        id="trajeto-pontos"
+                        type="circle"
+                        paint={{
+                            'circle-radius': 6,
+                            'circle-color': '#1d4ed8',
+                            'circle-stroke-color': '#ffffff',
+                            'circle-stroke-width': 2,
                         }}
                     />
                 </Source>
@@ -144,7 +241,13 @@ function Home() {
                 ) : batchError ? (
                     <div className={styles.loading_no_batches}>
                         <p>Erro ao carregar coletas</p>
-                        <button onClick={() => loadBatches(participantSelected || '')}>Tentar novamente</button>
+                        <button
+                            onClick={() =>
+                                loadBatches(participantSelected || '')
+                            }
+                        >
+                            Tentar novamente
+                        </button>
                     </div>
                 ) : batches.length === 0 ? (
                     <div className={styles.loading_no_batches}>
@@ -187,7 +290,9 @@ function Home() {
                 ) : participantError ? (
                     <div className={styles.loading_no_batches}>
                         <p>Erro ao carregar usuários</p>
-                        <button onClick={retryParticipants}>Tentar novamente</button>
+                        <button onClick={retryParticipants}>
+                            Tentar novamente
+                        </button>
                     </div>
                 ) : (
                     <div className={styles.participants_batch_container}>
