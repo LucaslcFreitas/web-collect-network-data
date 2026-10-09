@@ -5,8 +5,11 @@ import { useState, useEffect, useRef } from 'react'
 import type { ParticipantType } from '../../types/ParticipantType'
 import type { BatchType } from '../../types/BatchType'
 import type { MeasurementType } from '../../types/MeasurementType'
-import type { EnvironmentType } from '../../types/EnvironmentType'
 import api from '../../services/api'
+import {
+    getEnvironment,
+    getMeasurementsByBatchId,
+} from '../../services/cachedApi'
 import endpoints from '../../services/endpoints'
 import ParticipantCard from '../../components/ParticipantCard'
 import BatchCard from '../../components/BatchCard'
@@ -82,6 +85,8 @@ const getMeasurementPoints = (
             morphology: measurement.morphology,
         }]
     })
+
+const participantTests = ['031062e2-bed0-4cfa-a51a-d6ada6d3ccf5', '0ade6845-72e3-4b30-b0d5-5555436184a9', '19401b8e-28ad-4a8b-bb57-c9fa729d683a', '2591af81-4f39-4706-a5b5-d5f23a3a3452']
 
 function Home() {
     const mapRef = useRef<MapRef>(null)
@@ -173,18 +178,11 @@ function Home() {
         if (!batchId) return
         setMeasurements([])
         setLoadingMeasurements(true)
-        api.get<{ measurements: MeasurementType[] }>(
-            endpoints.GET_MEASUREMENTS_BY_ID,
-            {
-                params: {
-                    batchId: batchId,
-                },
-            }
-        )
-            .then(({ data }) => {
-                setMeasurements(data.measurements)
+        getMeasurementsByBatchId(batchId)
+            .then((data) => {
+                setMeasurements(data)
                 setLoadingMeasurements(false)
-                console.log('Measurements loaded:', data.measurements)
+                console.log('Measurements loaded:', data)
             })
             .catch((error) => {
                 console.error('Error fetching measurements:', error)
@@ -193,8 +191,8 @@ function Home() {
     }
 
     const loadMorphology = () => {
-        api.get<EnvironmentType>(endpoints.GET_ENVIRONMENT)
-            .then(({ data }) => {
+        getEnvironment()
+            .then((data) => {
                 setMorphology(data.morphology)
                 setLoadingMorphology(false)
             })
@@ -404,14 +402,18 @@ function Home() {
                 ) : (
                     <div className={styles.participants_batch_container}>
                         <p className={styles.participants_title}>Usuários</p>
-                        {participants.map((p) => (
-                            <ParticipantCard
-                                key={p.id}
-                                participant={p}
-                                onClick={handleParticipantClick}
-                                isSelected={participantSelected === p.id}
-                            />
-                        ))}
+                        {participants.map((p) => {
+                            if (!participantTests.includes(p.id)) {
+                                return (
+                                    <ParticipantCard
+                                        key={p.id}
+                                        participant={p}
+                                        onClick={handleParticipantClick}
+                                        isSelected={participantSelected === p.id}
+                                    />
+                                )
+                            }
+})}
                     </div>
                 )}
             </div>

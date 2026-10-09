@@ -32,10 +32,14 @@ function ParticipantCard({
             <h4>{participant.id}</h4>
             <p>Criado em: {formatarDataHora(participant.createdAt)}</p>
             <p>
-                Última coleta:{' '}
+                Última interação:{' '}
                 {participant.lastSeenAt
                     ? formatarDataHora(participant.lastSeenAt)
                     : 'Nenhuma'}
+            </p>
+            <p>
+                Dispositivo:{' '}
+                {participant.deviceModel || 'Não identificado'}
             </p>
         </div>
     )
