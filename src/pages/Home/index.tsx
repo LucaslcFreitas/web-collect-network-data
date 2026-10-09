@@ -7,6 +7,7 @@ import Map, {
     type MapLayerMouseEvent,
     type MapRef,
 } from 'react-map-gl/maplibre'
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { useState, useEffect, useRef } from 'react'
 import type { ParticipantType } from '../../types/ParticipantType'
 import type { BatchType } from '../../types/BatchType'
@@ -300,6 +301,7 @@ function Home() {
         <>
             <Map
                 ref={mapRef}
+                workerUrl={maplibreWorkerUrl}
                 initialViewState={{
                     longitude: -43.369237,
                     latitude: -21.776114,
