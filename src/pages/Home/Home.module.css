@@ -149,3 +149,37 @@
     height: 4px;
     border-radius: 2px;
 }
+
+.measurement_popup {
+    min-width: 220px;
+    color: #263544;
+
+    h4 {
+        margin: 0 0 10px;
+        color: #4e6072;
+        font-size: 16px;
+    }
+
+    dl {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 5px 12px;
+        margin: 0;
+        font-size: 13px;
+    }
+
+    dt {
+        color: #6b7280;
+    }
+
+    dd {
+        margin: 0;
+        font-weight: 600;
+        text-align: right;
+    }
+
+    p {
+        margin: 0;
+        font-size: 13px;
+    }
+}

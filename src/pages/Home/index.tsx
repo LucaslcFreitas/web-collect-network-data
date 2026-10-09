@@ -1,6 +1,12 @@
 import styles from './Home.module.css'
 import logo from '../../assets/logo.png'
-import Map, { Source, Layer, type MapRef } from 'react-map-gl/maplibre'
+import Map, {
+    Source,
+    Layer,
+    Popup,
+    type MapLayerMouseEvent,
+    type MapRef,
+} from 'react-map-gl/maplibre'
 import { useState, useEffect, useRef } from 'react'
 import type { ParticipantType } from '../../types/ParticipantType'
 import type { BatchType } from '../../types/BatchType'
@@ -69,7 +75,11 @@ const getEnvironmentColor = (environment: string | null) => {
 
 const getMeasurementPoints = (
     measurements: MeasurementType[]
-): { coordinates: [number, number]; morphology: string | null }[] =>
+): {
+    coordinates: [number, number]
+    morphology: string | null
+    measurement: MeasurementType
+}[] =>
     measurements.flatMap((measurement) => {
         const location = measurement.location
         if (
@@ -83,6 +93,7 @@ const getMeasurementPoints = (
         return [{
             coordinates: [location.longitude, location.latitude],
             morphology: measurement.morphology,
+            measurement,
         }]
     })
 
@@ -112,6 +123,9 @@ function Home() {
     // measurements
     const [measurements, setMeasurements] = useState<MeasurementType[]>([])
     const [loadingMeasurements, setLoadingMeasurements] = useState(false)
+    const [selectedMeasurementIndex, setSelectedMeasurementIndex] = useState<
+        number | null
+    >(null)
 
     const measurementPoints = getMeasurementPoints(measurements)
     const locations = measurementPoints.map(({ coordinates }) => coordinates)
@@ -138,6 +152,26 @@ function Home() {
                 coordinates,
             },
         })),
+    }
+
+    const selectedMeasurement =
+        selectedMeasurementIndex === null
+            ? null
+            : measurementPoints[selectedMeasurementIndex]?.measurement
+
+    const handlePointClick = (event: MapLayerMouseEvent) => {
+        const feature = event.features?.[0]
+        const measurementIndexValue = feature?.properties?.measurementIndex
+        const measurementIndex = Number(measurementIndexValue) - 1
+
+        if (
+            measurementIndexValue != null &&
+            Number.isInteger(measurementIndex) &&
+            measurementIndex >= 0 &&
+            measurementIndex < measurementPoints.length
+        ) {
+            setSelectedMeasurementIndex(measurementIndex)
+        }
     }
 
     const loadParticipants = () => {
@@ -271,7 +305,9 @@ function Home() {
                     latitude: -21.776114,
                     zoom: 15,
                 }}
-                mapStyle="https://tiles.openfreemap.org/styles/liberty"
+                    mapStyle="https://tiles.openfreemap.org/styles/liberty"
+                    interactiveLayerIds={['trajeto-pontos']}
+                    onClick={handlePointClick}
                 style={{
                     position: 'fixed',
                     inset: 0,
@@ -305,6 +341,77 @@ function Home() {
                         }}
                     />
                 </Source>
+                {selectedMeasurement?.location && (
+                    <Popup
+                        longitude={selectedMeasurement.location.longitude ?? 0}
+                        latitude={selectedMeasurement.location.latitude ?? 0}
+                        anchor="bottom"
+                        closeButton
+                        closeOnClick={false}
+                        onClose={() => setSelectedMeasurementIndex(null)}
+                    >
+                        <div className={styles.measurement_popup}>
+                            <h4>Serving cell</h4>
+                            {selectedMeasurement.servingCell ? (
+                                <dl>
+                                    <dt>Tecnologia</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.technology ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>Cell ID</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.cellId ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>PCI</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.pci ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>MCC / MNC</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.mcc ??
+                                            'N/A'}{' '}
+                                        /{' '}
+                                        {selectedMeasurement.servingCell.mnc ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>ARFCN</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.arfcn ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>RSSI</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.rssi ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>RSRP / RSRQ</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.rsrp ??
+                                            'N/A'}{' '}
+                                        /{' '}
+                                        {selectedMeasurement.servingCell.rsrq ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>Timing Advance</dt>
+                                    <dd>
+                                        {selectedMeasurement.servingCell.timingAdvance ??
+                                            'N/A'}
+                                    </dd>
+                                    <dt>Qtd células vizinhas</dt>
+                                    <dd>
+                                        {selectedMeasurement.neighboringCells?.length ??
+                                            'N/A'}
+                                    </dd>
+                                </dl>
+                            ) : (
+                                <p>Sem dados da servingCell.</p>
+                            )}
+                        </div>
+                    </Popup>
+                )}
             </Map>
             <div className={styles.environment_list}>
                 <h3>Ambientes</h3>
@@ -341,7 +448,7 @@ function Home() {
                 <h3>Coletas</h3>
                 {loadingBatches ? (
                     <div className={styles.loading_no_batches}>
-                        <p>Loading batches...</p>
+                        <p>Carregando coletas...</p>
                     </div>
                 ) : batchError ? (
                     <div className={styles.loading_no_batches}>
