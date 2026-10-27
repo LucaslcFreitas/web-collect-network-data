@@ -100,6 +100,26 @@ const getMeasurementPoints = (
 
 const participantTests = ['031062e2-bed0-4cfa-a51a-d6ada6d3ccf5', '0ade6845-72e3-4b30-b0d5-5555436184a9', '19401b8e-28ad-4a8b-bb57-c9fa729d683a', '2591af81-4f39-4706-a5b5-d5f23a3a3452']
 
+const data: Intl.DateTimeFormatOptions = {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+};
+const hour: Intl.DateTimeFormatOptions = {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+};
+
+const formatDate = (dateString: string | undefined) => {
+    const date = new Date(dateString ?? '');
+
+    const dateFormatted = new Intl.DateTimeFormat('pt-BR', data).format(date);
+    const hourFormatted = new Intl.DateTimeFormat('pt-BR', hour).format(date);
+    return `${dateFormatted} ${hourFormatted}`;
+}
+
 function Home() {
     const mapRef = useRef<MapRef>(null)
 
@@ -356,6 +376,10 @@ function Home() {
                             <h4>Serving cell</h4>
                             {selectedMeasurement.servingCell ? (
                                 <dl>
+                                    <dt>Data</dt>
+                                    <dd>
+                                        {formatDate(selectedMeasurement.timestamp)}
+                                    </dd>
                                     <dt>Tecnologia</dt>
                                     <dd>
                                         {selectedMeasurement.servingCell.technology ??

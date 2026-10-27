@@ -6,6 +6,7 @@ const DATABASE_VERSION = 1
 const MEASUREMENTS_STORE = 'measurements'
 const ENVIRONMENT_STORE = 'environment'
 const ENVIRONMENT_KEY = 'current'
+const CACHE_VERSION_STORAGE_KEY = 'web-collect-network-data-cache-version'
 
 type EnvironmentCacheEntry = {
     key: typeof ENVIRONMENT_KEY
@@ -69,6 +70,32 @@ const putInStore = <T>(storeName: string, value: T): Promise<void> =>
                 transaction.onabort = () => reject(transaction.error)
             })
     )
+
+const deleteDatabase = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) {
+            reject(new Error('IndexedDB is not available'))
+            return
+        }
+
+        const request = window.indexedDB.deleteDatabase(DATABASE_NAME)
+        request.onsuccess = () => resolve()
+        request.onerror = () => reject(request.error)
+        request.onblocked = () =>
+            reject(new Error(`Unable to delete IndexedDB database "${DATABASE_NAME}"`))
+    })
+
+export const initializeCacheVersion = async (): Promise<void> => {
+    const currentVersion = import.meta.env.VITE_VERSION
+    const storedVersion = window.localStorage.getItem(
+        CACHE_VERSION_STORAGE_KEY
+    )
+
+    if (storedVersion === currentVersion) return
+
+    await deleteDatabase()
+    window.localStorage.setItem(CACHE_VERSION_STORAGE_KEY, currentVersion)
+}
 
 export const getCachedMeasurements = async (
     batchId: string
